@@ -26,4 +26,3 @@ jobs:
         with:
           name: Jellyfin-Plugin-Popups
           path: out/
-```
