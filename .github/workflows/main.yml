@@ -1,0 +1,30 @@
+```yaml
+name: Build Jellyfin Popups Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build plugin
+        run: dotnet build Jellyfin.Plugin.Popups/Jellyfin.Plugin.Popups.csproj -c Release -o out
+
+      - name: Upload compiled DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellyfin-Plugin-Popups
+          path: out/
+```
