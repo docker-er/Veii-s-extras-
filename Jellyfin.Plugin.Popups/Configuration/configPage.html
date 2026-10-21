@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Popups</title>
+</head>
+<body>
+    <div id="PopupsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage">
+        <div data-role="content">
+            <div class="content-primary">
+                <div id="jfp-app"></div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                'use strict';
+
+                var PLUGIN_ID = '88722001-51c6-43bd-af6f-1179177bbc7c';
+                var page = document.querySelector('#PopupsConfigPage');
+                var app = page.querySelector('#jfp-app');
+
+                var cfg = null;
+                var users = [];
+                var openId = null;
+                var itemNames = {};
+
+                // ------------------------------------------------------------ styles
+                // Jellyfin removes <style> tags from plugin pages, so the styles are added from here.
+                function injectStyles() {
+                    if (document.getElementById('jfp-style')) { return; }
+                    var s = document.createElement('style');
+                    s.id = 'jfp-style';
+                    s.textContent = [
+                        '.jfp{max-width:52rem;margin:0 auto;padding-bottom:4rem}',
+                        '.jfp h2{margin:1.5rem 0 .5rem}',
+                        '.jfp-muted{opacity:.7;font-size:.9rem}',
+                        '.jfp-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}',
+                        '.jfp-card{margin:.75rem 0;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:rgba(127,127,127,.08)}',
+                        '.jfp-head{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.75rem 1rem}',
+                        '.jfp-head-title{flex:1 1 12rem;min-width:0}',
+                        '.jfp-head-title strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+                        '.jfp-pill{display:inline-block;padding:.1rem .5rem;margin-right:.35rem;border-radius:3px;background:rgba(127,127,127,.25);font-size:.75rem}',
+                        '.jfp-off{opacity:.55}',
+                        '.jfp-body{padding:.25rem 1rem 1rem;border-top:1px solid rgba(127,127,127,.25)}',
+                        '.jfp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.75rem 1rem}',
+                        '.jfp-field{display:flex;flex-direction:column;gap:.25rem;margin:.6rem 0}',
+                        '.jfp-field>label,.jfp-lbl{font-weight:600;font-size:.9rem}',
+                        '.jfp-help{opacity:.65;font-size:.8rem}',
+                        '.jfp input[type=text],.jfp input[type=number],.jfp input[type=url],.jfp input[type=datetime-local],.jfp textarea,.jfp select{box-sizing:border-box;width:100%;padding:.55rem .65rem;border:1px solid rgba(127,127,127,.6);border-radius:4px;background:rgba(127,127,127,.15);color:inherit;font:inherit}',
+                        '.jfp select option{background:var(--jf-palette-background-paper,#202020);color:var(--jf-palette-text-primary,#fff)}',
+                        '.jfp textarea{min-height:7rem;resize:vertical}',
+                        '.jfp input[type=color]{width:3rem;height:2.4rem;padding:0;border:1px solid rgba(127,127,127,.6);border-radius:4px;background:none}',
+                        '.jfp-check{display:flex;gap:.5rem;align-items:center;cursor:pointer}',
+                        '.jfp-btn{min-height:2.4rem;padding:0 1rem;border:0;border-radius:4px;background:rgba(127,127,127,.3);color:inherit;font:inherit;font-weight:600;cursor:pointer}',
+                        '.jfp-btn:hover{background:rgba(127,127,127,.45)}',
+                        '.jfp-btn-main{background:var(--jf-palette-primary-main,#00a4dc);color:var(--jf-palette-primary-contrastText,#fff)}',
+                        '.jfp-btn-main:hover{filter:brightness(1.12);background:var(--jf-palette-primary-main,#00a4dc)}',
+                        '.jfp-btn-danger{color:var(--jf-palette-error-main,#eb3942)}',
+                        '.jfp-users{max-height:12rem;overflow:auto;padding:.5rem;border:1px solid rgba(127,127,127,.35);border-radius:4px}',
+                        '.jfp-results{display:flex;flex-direction:column;gap:.25rem;margin-top:.4rem}',
+                        '.jfp-results button{justify-content:flex-start;text-align:left}',
+                        '.jfp-error{margin:.75rem 0;padding:.6rem .8rem;border-radius:4px;background:rgba(235,57,66,.18);color:inherit}',
+                        '.jfp-sticky{position:sticky;bottom:0;z-index:2;display:flex;gap:.75rem;align-items:center;padding:.75rem 0;background:var(--jf-palette-background-default,transparent)}'
+                    ].join('');
+                    document.head.appendChild(s);
+                }
+
+                // ------------------------------------------------------------ tiny DOM helpers
+                function h(tag, props, kids) {
+                    var n = document.createElement(tag);
+                    Object.keys(props || {}).forEach(function (k) {
+                        if (k === 'class') { n.className = props[k]; }
+                        else if (k === 'text') { n.textContent = props[k]; }
+                        else if (k.indexOf('on') === 0) { n.addEventListener(k.slice(2), props[k]); }
+                        else if (props[k] !== false && props[k] != null) { n.setAttribute(k, props[k]); }
+                    });
+                    (kids || []).forEach(function (c) { if (c) { n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); } });
+                    return n;
+                }
+
+                function field(label, input, help) {
+                    var id = 'jfp-' + Math.random().toString(36).slice(2);
+                    input.id = id;
+                    return h('div', { class: 'jfp-field' }, [
+                        h('label', { for: id, text: label }),
+                        input,
+                        help ? h('div', { class: 'jfp-help', text: help }) : null
+                    ]);
+                }
+
+                function textInput(obj, key, type) {
+                    return h('input', {
+                        type: type || 'text',
+                        value: obj[key] == null ? '' : obj[key],
+                        oninput: function (e) { obj[key] = e.target.value; }
+                    });
+                }
+
+                function numberInput(obj, key, min, max) {
+                    return h('input', {
+                        type: 'number', min: min, max: max, value: obj[key],
+                        oninput: function (e) { obj[key] = parseInt(e.target.value, 10) || 0; }
+                    });
+                }
+
+                function selectInput(obj, key, options, onchange) {
+                    var sel = h('select', {
+                        onchange: function (e) { obj[key] = e.target.value; if (onchange) { onchange(); } }
+                    }, options.map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+                    sel.value = obj[key];
+                    return sel;
+                }
+
+                function check(label, obj, key, onchange) {
+                    var box = h('input', { type: 'checkbox', onchange: function (e) { obj[key] = e.target.checked; if (onchange) { onchange(); } } });
+                    box.checked = !!obj[key];
+                    return h('label', { class: 'jfp-check' }, [box, h('span', { text: label })]);
+                }
+
+                function button(label, cls, fn) {
+                    return h('button', { type: 'button', class: 'jfp-btn ' + (cls || ''), text: label, onclick: fn });
+                }
+
+                // ------------------------------------------------------------ data
+                function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+                function blankPopup() {
+                    return {
+                        Id: newId(), Enabled: true, Name: 'New popup', Label: '', Title: '', Body: '',
+                        ImageUrl: '', ItemId: '', ButtonText: '', ButtonUrl: '',
+                        Audience: 'everyone', UserIds: [], Device: 'all', Frequency: 'always',
+                        Size: 'standard', AccentColor: '', StartsAtUtc: '', EndsAtUtc: '',
+                        Priority: 0, Revision: 1
+                    };
+                }
+
+                function toLocalInput(iso) {
+                    if (!iso) { return ''; }
+                    var d = new Date(iso);
+                    if (isNaN(d.getTime())) { return ''; }
+                    var pad = function (n) { return String(n).padStart(2, '0'); };
+                    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+                }
+
+                function isSafeUrl(u) {
+                    return !u || /^https?:\/\//i.test(u) || /^#\//.test(u) || (/^\//.test(u) && !/^\/\//.test(u));
+                }
+
+                function validate() {
+                    var problems = [];
+                    cfg.Popups.forEach(function (p) {
+                        var n = p.Name || 'Unnamed popup';
+                        if (!p.Title && !p.Body && !p.ImageUrl && !p.ItemId) { problems.push(n + ': add a title, text, image or library title.'); }
+                        if (!isSafeUrl(p.ImageUrl)) { problems.push(n + ': the image address must start with http://, https:// or /.'); }
+                        if (!isSafeUrl(p.ButtonUrl)) { problems.push(n + ': the button address must start with http://, https://, / or #/.'); }
+                        if (p.ButtonUrl && !p.ButtonText) { problems.push(n + ': the button needs text.'); }
+                        if (p.AccentColor && !/^#[0-9a-fA-F]{6}$/.test(p.AccentColor)) { problems.push(n + ': the accent color must look like #e50914.'); }
+                        if (p.Audience === 'selected' && !p.UserIds.length) { problems.push(n + ': pick at least one user, or change who can see it.'); }
+                        if (p.StartsAtUtc && p.EndsAtUtc && new Date(p.EndsAtUtc) < new Date(p.StartsAtUtc)) { problems.push(n + ': the end is before the start.'); }
+                    });
+                    return problems;
+                }
+
+                // ------------------------------------------------------------ render
+                function summary(p) {
+                    var audience = { everyone: 'Everyone', admins: 'Admins', nonadmins: 'Non-admins', selected: (p.UserIds.length + ' user(s)') }[p.Audience] || 'Everyone';
+                    var pills = [audience, p.Frequency === 'once' ? 'First time only' : 'Every visit'];
+                    if (p.Device !== 'all') { pills.push(p.Device === 'mobile' ? 'Phones' : 'Desktop'); }
+                    if (p.ItemId) { pills.push('Library title'); }
+                    else if (p.ImageUrl) { pills.push('Image'); }
+                    return pills.map(function (x) { return h('span', { class: 'jfp-pill', text: x }); });
+                }
+
+                function render() {
+                    app.textContent = '';
+                    var root = h('div', { class: 'jfp' });
+
+                    root.appendChild(h('h2', { text: 'Popups' }));
+                    root.appendChild(h('div', { class: 'jfp-muted', text: 'Messages shown when people open Jellyfin in a browser, the desktop app or the Android / iOS apps. Native TV apps (Android TV, Swiftfin, Roku) cannot show them.' }));
+
+                    // Global settings
+                    root.appendChild(h('h2', { text: 'Settings' }));
+                    var g = h('div', { class: 'jfp-card' }, [h('div', { class: 'jfp-body' }, [
+                        check('Popups are on (turn off to stop everything)', cfg, 'Enabled'),
+                        h('div', { class: 'jfp-grid' }, [
+                            field('Most popups per visit', numberInput(cfg, 'MaxPerVisit', 1, 20), 'If several match, they appear one after another up to this number.'),
+                            field('Wait before showing (seconds)', numberInput(cfg, 'ShowDelaySeconds', 0, 30), 'A short pause lets the page finish loading first.')
+                        ]),
+                        check('Clicking outside the popup closes it', cfg, 'CloseOnBackdropClick')
+                    ])]);
+                    root.appendChild(g);
+
+                    // Asks
+                    root.appendChild(h('h2', { text: 'Asks (messages from users)' }));
+                    var ak = h('div', { class: 'jfp-card' }, [h('div', { class: 'jfp-body' }, [
+                        check('Asks is on', cfg, 'AsksEnabled'),
+                        h('div', { class: 'jfp-help', text: 'Users send problems, requests and opinions, with a library title or photos attached. Only you and the sender can read each message. Read them in the Asks page of the dashboard menu.' }),
+                        check('Show a floating button', cfg, 'AsksShowButton'),
+                        h('div', { class: 'jfp-grid' }, [
+                            field('Asks window title and button', textInput(cfg, 'AsksButtonText'), 'Also the title of the window. Up to 24 characters.'),
+                            field('Asks button position', selectInput(cfg, 'AsksButtonPosition', [['bottom-right', 'Bottom right'], ['bottom-left', 'Bottom left']])),
+                            field('Messages per user per hour', numberInput(cfg, 'AsksMaxPerHour', 1, 60), 'Stops spam.')
+                        ]),
+                        field('Intro text (optional)', textInput(cfg, 'AsksIntro'), 'Shown at the top of the window. Leave empty for the default.'),
+                        check('Allow photos', cfg, 'AsksAllowImages'),
+                        h('div', { class: 'jfp-help', text: 'Prefer a menu tab? In KefinTweaks, add a Custom Menu Link: Name "Asks", leave URL empty, Action "JellyfinAsks.open", pick an icon. Then turn the floating button off if you like.' })
+                    ])]);
+                    root.appendChild(ak);
+
+                    // Popups
+                    root.appendChild(h('div', { class: 'jfp-row' }, [
+                        h('h2', { text: 'Your popups', style: 'flex:1;margin-bottom:0' }),
+                        button('+ New popup', 'jfp-btn-main', function () {
+                            var p = blankPopup();
+                            cfg.Popups.unshift(p);
+                            openId = p.Id;
+                            render();
+                        })
+                    ]));
+
+                    if (!cfg.Popups.length) {
+                        root.appendChild(h('div', { class: 'jfp-muted', style: 'margin:1rem 0', text: 'No popups yet. Click "New popup" to make one.' }));
+                    }
+                    cfg.Popups.forEach(function (p) { root.appendChild(renderPopup(p)); });
+
+                    var errBox = h('div', { id: 'jfp-errors' });
+                    root.appendChild(errBox);
+                    root.appendChild(h('div', { class: 'jfp-sticky' }, [
+                        button('Save changes', 'jfp-btn-main', save),
+                        h('span', { class: 'jfp-muted', text: 'Changes apply the next time someone opens Jellyfin.' })
+                    ]));
+                    app.appendChild(root);
+                }
+
+                function renderPopup(p) {
+                    var isOpen = openId === p.Id;
+                    var card = h('div', { class: 'jfp-card' + (p.Enabled ? '' : ' jfp-off') });
+
+                    var head = h('div', { class: 'jfp-head' }, [
+                        h('div', { class: 'jfp-head-title' }, [
+                            h('strong', { text: p.Name || '(no name)' }),
+                            h('div', {}, summary(p))
+                        ]),
+                        button(isOpen ? 'Close' : 'Edit', '', function () { openId = isOpen ? null : p.Id; render(); }),
+                        button('Preview', '', function () { preview(p); })
+                    ]);
+                    card.appendChild(head);
+                    if (!isOpen) { return card; }
+
+                    var body = h('div', { class: 'jfp-body' });
+
+                    body.appendChild(h('div', { class: 'jfp-grid' }, [
+                        field('Name (only you see this)', textInput(p, 'Name')),
+                        field('Small tag above the title', textInput(p, 'Label'), 'For example NEWS, NEW or UPDATE.')
+                    ]));
+                    body.appendChild(check('This popup is live', p, 'Enabled'));
+
+                    body.appendChild(h('h3', { text: 'Content' }));
+                    body.appendChild(field('Title', textInput(p, 'Title')));
+                    body.appendChild(field('Text', h('textarea', { oninput: function (e) { p.Body = e.target.value; }, text: p.Body }),
+                        'Leave a blank line for a new paragraph. **bold** makes bold text. [text](https://link) makes a link.'));
+                    body.appendChild(field('Image address', textInput(p, 'ImageUrl', 'url'), 'Optional. A link to a picture (https://...). Ignored if you pick a library title with its own artwork.'));
+                    body.appendChild(itemPicker(p));
+
+                    body.appendChild(h('div', { class: 'jfp-grid' }, [
+                        field('Button text', textInput(p, 'ButtonText'), 'Optional.'),
+                        field('Button link', textInput(p, 'ButtonUrl'), 'https://... or #/home. A library title already gets a "More info" button.')
+                    ]));
+
+                    body.appendChild(h('h3', { text: 'Who sees it, and when' }));
+                    var usersBox = h('div', { class: 'jfp-field' });
+                    var refreshUsers = function () { usersBox.style.display = p.Audience === 'selected' ? '' : 'none'; };
+                    body.appendChild(h('div', { class: 'jfp-grid' }, [
+                        field('Who can see it', selectInput(p, 'Audience', [['everyone', 'Everyone'], ['admins', 'Admins only'], ['nonadmins', 'Everyone except admins'], ['selected', 'Selected users']], refreshUsers)),
+                        field('How often', selectInput(p, 'Frequency', [['always', 'Every time they open Jellyfin'], ['once', 'Only the first time']]),
+                            'Only the first time is remembered per user on the server, so it follows them to other devices.'),
+                        field('Where', selectInput(p, 'Device', [['all', 'Phones and computers'], ['mobile', 'Phones only'], ['desktop', 'Computers only']]))
+                    ]));
+                    usersBox.appendChild(h('div', { class: 'jfp-lbl', text: 'Users' }));
+                    var list = h('div', { class: 'jfp-users' });
+                    users.forEach(function (u) {
+                        var box = h('input', { type: 'checkbox', onchange: function (e) {
+                            var uid = String(u.Id).replace(/-/g, '').toLowerCase();
+                            p.UserIds = p.UserIds.filter(function (x) { return String(x).replace(/-/g, '').toLowerCase() !== uid; });
+                            if (e.target.checked) { p.UserIds.push(uid); }
+                        } });
+                        var uid2 = String(u.Id).replace(/-/g, '').toLowerCase();
+                        box.checked = p.UserIds.some(function (x) { return String(x).replace(/-/g, '').toLowerCase() === uid2; });
+                        list.appendChild(h('label', { class: 'jfp-check' }, [box, h('span', { text: u.Name })]));
+                    });
+                    usersBox.appendChild(list);
+                    body.appendChild(usersBox);
+                    refreshUsers();
+
+                    var start = h('input', { type: 'datetime-local', value: toLocalInput(p.StartsAtUtc), onchange: function (e) { p.StartsAtUtc = e.target.value ? new Date(e.target.value).toISOString() : ''; } });
+                    var end = h('input', { type: 'datetime-local', value: toLocalInput(p.EndsAtUtc), onchange: function (e) { p.EndsAtUtc = e.target.value ? new Date(e.target.value).toISOString() : ''; } });
+                    body.appendChild(h('div', { class: 'jfp-grid' }, [
+                        field('Start showing', start, 'Optional. Your local time.'),
+                        field('Stop showing', end, 'Optional.')
+                    ]));
+                    body.appendChild(field('Order', numberInput(p, 'Priority', -100, 100), 'When several popups match, higher numbers come first.'));
+
+                    body.appendChild(h('h3', { text: 'Look' }));
+                    var accent = h('input', { type: 'color', value: /^#[0-9a-fA-F]{6}$/.test(p.AccentColor) ? p.AccentColor : '#e50914', oninput: function (e) { p.AccentColor = e.target.value; } });
+                    body.appendChild(h('div', { class: 'jfp-grid' }, [
+                        field('Size', selectInput(p, 'Size', [['compact', 'Compact'], ['standard', 'Standard'], ['wide', 'Wide']])),
+                        h('div', { class: 'jfp-field' }, [
+                            h('div', { class: 'jfp-lbl', text: 'Accent color (the small tag)' }),
+                            h('div', { class: 'jfp-row' }, [accent, button('Use theme color', '', function () { p.AccentColor = ''; accent.value = '#e50914'; })]),
+                            h('div', { class: 'jfp-help', text: 'Left on "theme color" it follows Netflin\'s red automatically.' })
+                        ])
+                    ]));
+
+                    body.appendChild(h('div', { class: 'jfp-row', style: 'margin-top:1rem' }, [
+                        button('Preview', '', function () { preview(p); }),
+                        button('Show again to everyone', '', function () {
+                            p.Revision = (p.Revision || 1) + 1;
+                            toast('Will show again to people who already saw it. Save to apply.');
+                        }),
+                        button('Duplicate', '', function () {
+                            var c = JSON.parse(JSON.stringify(p));
+                            c.Id = newId(); c.Name = (p.Name || 'Popup') + ' (copy)'; c.Revision = 1;
+                            cfg.Popups.splice(cfg.Popups.indexOf(p) + 1, 0, c);
+                            openId = c.Id; render();
+                        }),
+                        button('Delete', 'jfp-btn-danger', function () {
+                            if (!window.confirm('Delete "' + (p.Name || 'this popup') + '"?')) { return; }
+                            cfg.Popups = cfg.Popups.filter(function (x) { return x !== p; });
+                            openId = null; render();
+                        })
+                    ]));
+
+                    card.appendChild(body);
+                    return card;
+                }
+
+                // Library title picker: search, click a result, done.
+                function itemPicker(p) {
+                    var wrap = h('div', { class: 'jfp-field' });
+                    var chosen = h('div', { class: 'jfp-help' });
+                    var results = h('div', { class: 'jfp-results' });
+                    var q = h('input', { type: 'text', placeholder: 'Search for a movie or show...' });
+
+                    function showChosen() {
+                        chosen.textContent = '';
+                        if (!p.ItemId) { chosen.textContent = 'No library title selected.'; return; }
+                        chosen.appendChild(document.createTextNode('Selected: ' + (itemNames[p.ItemId] || p.ItemId) + ' '));
+                        chosen.appendChild(button('Remove', '', function () { p.ItemId = ''; showChosen(); }));
+                        if (!itemNames[p.ItemId]) {
+                            ApiClient.getItem(ApiClient.getCurrentUserId(), p.ItemId).then(function (it) {
+                                itemNames[p.ItemId] = it.Name; showChosen();
+                            }, function () { itemNames[p.ItemId] = '(not found)'; showChosen(); });
+                        }
+                    }
+
+                    function search() {
+                        var term = q.value.trim();
+                        results.textContent = '';
+                        if (!term) { return; }
+                        ApiClient.getItems(ApiClient.getCurrentUserId(), {
+                            SearchTerm: term, IncludeItemTypes: 'Movie,Series,Episode,BoxSet', Recursive: true, Limit: 8
+                        }).then(function (res) {
+                            if (!res.Items.length) { results.appendChild(h('div', { class: 'jfp-help', text: 'Nothing found.' })); }
+                            res.Items.forEach(function (it) {
+                                var label = it.Name + (it.ProductionYear ? ' (' + it.ProductionYear + ')' : '') + '  -  ' + it.Type;
+                                results.appendChild(button(label, '', function () {
+                                    p.ItemId = it.Id; itemNames[it.Id] = it.Name; results.textContent = ''; showChosen();
+                                }));
+                            });
+                        });
+                    }
+
+                    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+                    wrap.appendChild(h('div', { class: 'jfp-lbl', text: 'Library title (show a movie or series card)' }));
+                    wrap.appendChild(h('div', { class: 'jfp-row' }, [h('div', { style: 'flex:1 1 14rem' }, [q]), button('Search', '', search)]));
+                    wrap.appendChild(results);
+                    wrap.appendChild(chosen);
+                    wrap.appendChild(h('div', { class: 'jfp-help', text: 'Adds the title\'s artwork, logo, year and summary, plus a "More info" button. People only see it if they have access to that title.' }));
+                    showChosen();
+                    return wrap;
+                }
+
+                // ------------------------------------------------------------ actions
+                function toast(msg) {
+                    var box = document.getElementById('jfp-errors');
+                    if (!box) { return; }
+                    box.textContent = '';
+                    box.appendChild(h('div', { class: 'jfp-muted', style: 'margin:.5rem 0', text: msg }));
+                }
+
+                function preview(p) {
+                    if (!window.JellyfinPopups) {
+                        toast('Preview needs the popup script, which is not loaded. Check that the plugin is on and reload this page.');
+                        return;
+                    }
+                    window.JellyfinPopups.preview(p);
+                }
+
+                function save() {
+                    var box = document.getElementById('jfp-errors');
+                    box.textContent = '';
+                    var problems = validate();
+                    if (problems.length) {
+                        problems.forEach(function (m) { box.appendChild(h('div', { class: 'jfp-error', text: m })); });
+                        return;
+                    }
+                    Dashboard.showLoadingMsg();
+                    ApiClient.updatePluginConfiguration(PLUGIN_ID, cfg).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    }, function () {
+                        Dashboard.hideLoadingMsg();
+                        box.appendChild(h('div', { class: 'jfp-error', text: 'Could not save. Check the server log.' }));
+                    });
+                }
+
+                function load() {
+                    Dashboard.showLoadingMsg();
+                    Promise.all([ApiClient.getPluginConfiguration(PLUGIN_ID), ApiClient.getUsers()]).then(function (r) {
+                        cfg = r[0];
+                        var ad = { AsksEnabled: true, AsksShowButton: true, AsksButtonPosition: 'bottom-right', AsksButtonText: 'Asks', AsksIntro: '', AsksAllowImages: true, AsksMaxPerHour: 5 };
+                        Object.keys(ad).forEach(function (k) { if (cfg[k] == null) { cfg[k] = ad[k]; } });
+                        cfg.Popups = (cfg.Popups || []).map(function (p) {
+                            var d = blankPopup();
+                            Object.keys(p).forEach(function (k) { if (p[k] != null) { d[k] = p[k]; } });
+                            d.UserIds = d.UserIds || [];
+                            return d;
+                        });
+                        users = r[1] || [];
+                        render();
+                        Dashboard.hideLoadingMsg();
+                    }, function () {
+                        Dashboard.hideLoadingMsg();
+                        app.textContent = 'Could not load the popup settings.';
+                    });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    injectStyles();
+                    load();
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

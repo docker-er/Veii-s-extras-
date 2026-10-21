@@ -1,0 +1,346 @@
+/*
+ * Jellyfin Popups - styles.
+ * Colors, fonts, radii and shadows come from the Netflin theme variables (--nf-*) when present,
+ * then fall back to Jellyfin's own palette (--jf-palette-*), then to plain dark defaults.
+ * So it matches Netflin automatically and still looks right on any other theme.
+ */
+
+#jfpop-root {
+    --jfpop-accent-default: var(--nf-red, var(--jf-palette-primary-main, #e50914));
+    --jfpop-bg: var(--nf-surface, var(--jf-palette-background-paper, #181818));
+    --jfpop-line: var(--nf-line, rgb(255 255 255 / 0.1));
+    --jfpop-text: var(--nf-text, var(--jf-palette-text-primary, #fff));
+    --jfpop-text-2: var(--nf-text-2, #e5e5e5);
+    --jfpop-text-dim: var(--nf-text-dim, var(--jf-palette-text-secondary, #b3b3b3));
+    --jfpop-scrim: var(--nf-scrim, rgb(0 0 0 / 0.7));
+    --jfpop-radius: var(--nf-radius-lg, 6px);
+    --jfpop-radius-btn: var(--nf-radius, 4px);
+    --jfpop-shadow: var(--nf-shadow-3, 0 1.5rem 3rem rgb(0 0 0 / 0.7));
+    --jfpop-font: var(--nf-font, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    --jfpop-font-brand: var(--nf-font-brand, "Bebas Neue", var(--jfpop-font));
+    --jfpop-btn-grey: var(--nf-fill-btn, rgb(109 109 110 / 0.7));
+    --jfpop-btn-grey-hover: var(--nf-fill-btn-hover, rgb(109 109 110 / 0.4));
+    --jfpop-disc: var(--nf-fill-disc, rgb(42 42 42 / 0.6));
+    --jfpop-disc-hover: var(--nf-fill-disc-hover, rgb(42 42 42 / 0.85));
+    --jfpop-outline: var(--nf-outline, rgb(255 255 255 / 0.5));
+    --jfpop-ease: var(--nf-ease-out, cubic-bezier(0.2, 0, 0, 1));
+}
+
+/* Overlay sits above the app and below Jellyfin's own dialogs (z-index 999999). */
+.jfpop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99990;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    box-sizing: border-box;
+    background: var(--jfpop-scrim);
+    opacity: 0;
+    transition: opacity 220ms var(--jfpop-ease);
+    overscroll-behavior: contain;
+    font-family: var(--jfpop-font);
+}
+
+.jfpop-overlay.jfpop-in {
+    opacity: 1;
+}
+
+.jfpop-overlay.jfpop-out {
+    opacity: 0;
+}
+
+.jfpop-card {
+    --jfpop-accent: var(--jfpop-accent-default);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(32rem, 100%);
+    max-height: min(42rem, 100%);
+    overflow: hidden auto;
+    box-sizing: border-box;
+    border: 1px solid var(--jfpop-line);
+    border-radius: var(--jfpop-radius);
+    background: var(--jfpop-bg);
+    box-shadow: var(--jfpop-shadow);
+    color: var(--jfpop-text);
+    transform: translateY(12px) scale(0.98);
+    transition: transform 260ms var(--jfpop-ease);
+    outline: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.jfpop-in .jfpop-card {
+    transform: none;
+}
+
+.jfpop-out .jfpop-card {
+    transform: translateY(8px) scale(0.98);
+}
+
+.jfpop-overlay[data-size="compact"] .jfpop-card { width: min(24rem, 100%); }
+.jfpop-overlay[data-size="wide"] .jfpop-card { width: min(46rem, 100%); }
+
+/* Close button: same round "disc" look as Netflin's detail-page buttons. */
+.jfpop-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 2px solid var(--jfpop-outline);
+    border-radius: 50%;
+    background: var(--jfpop-disc);
+    color: var(--jfpop-text);
+    cursor: pointer;
+    transition: background-color 150ms var(--jfpop-ease), border-color 150ms var(--jfpop-ease);
+}
+
+.jfpop-close svg {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.jfpop-close:hover {
+    border-color: #fff;
+    background: var(--jfpop-disc-hover);
+}
+
+/* Media */
+.jfpop-media {
+    position: relative;
+    flex: none;
+    aspect-ratio: 16 / 9;
+    background: rgb(255 255 255 / 0.04);
+}
+
+.jfpop-media::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 55%;
+    background: linear-gradient(0deg, var(--jfpop-bg), transparent);
+    pointer-events: none;
+}
+
+.jfpop-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.jfpop-logo {
+    position: absolute;
+    left: 1.5rem;
+    bottom: 0.75rem;
+    z-index: 1;
+    max-width: 55%;
+    max-height: 4.5rem;
+    object-fit: contain;
+    object-position: left bottom;
+    filter: drop-shadow(0 2px 8px rgb(0 0 0 / 0.6));
+}
+
+/* Content */
+.jfpop-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.25rem 1.5rem 1.5rem;
+}
+
+.jfpop-no-media .jfpop-content {
+    padding-top: 1.75rem;
+}
+
+/* Keep the first lines clear of the close button; buttons below can use the full width. */
+.jfpop-no-media .jfpop-label,
+.jfpop-no-media .jfpop-title {
+    padding-right: 3.25rem;
+}
+
+.jfpop-label {
+    align-self: flex-start;
+    color: var(--jfpop-accent);
+    font-family: var(--jfpop-font-brand);
+    font-size: 1.15rem;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.jfpop-title {
+    margin: 0;
+    color: var(--jfpop-text);
+    font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem);
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.jfpop-meta {
+    color: var(--jfpop-text-dim);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.jfpop-body {
+    color: var(--jfpop-text-2);
+    font-size: 1rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.jfpop-body p {
+    margin: 0 0 0.75em;
+}
+
+.jfpop-body p:last-child {
+    margin-bottom: 0;
+}
+
+.jfpop-body strong {
+    color: var(--jfpop-text);
+    font-weight: 700;
+}
+
+.jfpop-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.jfpop-link {
+    color: var(--jfpop-text);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+}
+
+.jfpop-link:hover {
+    text-decoration-color: var(--jfpop-accent);
+}
+
+.jfpop-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Buttons: white primary (like Netflin's Play), grey secondary. */
+.jfpop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.jfpop-btn {
+    min-height: 2.75rem;
+    padding: 0 1.4rem;
+    border: 0;
+    border-radius: var(--jfpop-radius-btn);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 150ms var(--jfpop-ease);
+}
+
+.jfpop-btn-primary {
+    background: #fff;
+    color: #000;
+}
+
+.jfpop-btn-primary:hover {
+    background: var(--nf-fill-white-hover, rgb(255 255 255 / 0.75));
+}
+
+.jfpop-btn-secondary {
+    background: var(--jfpop-btn-grey);
+    color: var(--jfpop-text);
+}
+
+.jfpop-btn-secondary:hover {
+    background: var(--jfpop-btn-grey-hover);
+}
+
+.jfpop-close:focus-visible,
+.jfpop-btn:focus-visible,
+.jfpop-link:focus-visible {
+    outline: var(--nf-focus, 2px solid #fff);
+    outline-offset: var(--nf-focus-offset, 2px);
+}
+
+/* Phones: a bottom sheet that is easy to reach with a thumb. */
+@media (max-width: 40em) {
+    .jfpop-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .jfpop-card,
+    .jfpop-overlay[data-size="compact"] .jfpop-card,
+    .jfpop-overlay[data-size="wide"] .jfpop-card {
+        width: 100%;
+        max-height: 88vh;
+        max-height: 88dvh;
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 14px 14px 0 0;
+    }
+
+    /* Kept apart from the size rules above: those are more specific and would
+       otherwise keep the card off-screen (translateY) for compact and wide popups. */
+    .jfpop-card {
+        transform: translateY(100%);
+    }
+
+    .jfpop-in .jfpop-card {
+        transform: none;
+    }
+
+    .jfpop-out .jfpop-card {
+        transform: translateY(100%);
+    }
+
+    .jfpop-content {
+        padding: 0.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+    }
+
+    .jfpop-no-media .jfpop-content {
+        padding-top: 1.5rem;
+    }
+
+    .jfpop-logo {
+        left: 1.25rem;
+    }
+
+    .jfpop-actions {
+        flex-direction: column;
+    }
+
+    .jfpop-btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .jfpop-overlay,
+    .jfpop-card {
+        transition: none;
+    }
+}

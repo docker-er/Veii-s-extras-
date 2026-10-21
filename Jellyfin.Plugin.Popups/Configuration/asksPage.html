@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Asks</title>
+</head>
+<body>
+    <div id="AsksInboxPage" data-role="page" class="page type-interior pluginConfigurationPage">
+        <div data-role="content">
+            <div class="content-primary">
+                <div id="jfa-app"></div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                'use strict';
+
+                var page = document.querySelector('#AsksInboxPage');
+                var app = page.querySelector('#jfa-app');
+                var all = [];
+                var filter = { status: 'all', type: 'all' };
+                var imageCache = {};
+
+                var TYPES = { problem: 'Problem', request: 'Request', opinion: 'Opinion', other: 'Other' };
+                var KINDS = { add: 'Add to library', subtitles: 'Subtitles', dub: 'Dub / audio', other: 'Other' };
+
+                // Jellyfin strips <style> tags from plugin pages, so styles are added from here.
+                function injectStyles() {
+                    if (document.getElementById('jfa-style')) { return; }
+                    var s = document.createElement('style');
+                    s.id = 'jfa-style';
+                    s.textContent = [
+                        '.jfa{max-width:52rem;margin:0 auto;padding-bottom:4rem}',
+                        '.jfa-muted{opacity:.7;font-size:.9rem}',
+                        '.jfa-bar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1rem 0}',
+                        '.jfa-bar .spacer{flex:1}',
+                        '.jfa-chipbtn{padding:.35rem .8rem;border-radius:999px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;font:inherit;cursor:pointer}',
+                        '.jfa-chipbtn[aria-pressed="true"]{background:var(--jf-palette-primary-main,#00a4dc);border-color:transparent;color:var(--jf-palette-primary-contrastText,#fff)}',
+                        '.jfa-card{margin:.75rem 0;padding:1rem;border:1px solid rgba(127,127,127,.35);border-radius:6px;background:rgba(127,127,127,.08)}',
+                        '.jfa-card.new{border-left:4px solid var(--jf-palette-primary-main,#00a4dc)}',
+                        '.jfa-top{display:flex;flex-wrap:wrap;gap:.4rem .6rem;align-items:center}',
+                        '.jfa-user{font-weight:600}',
+                        '.jfa-pill{padding:.1rem .55rem;border-radius:999px;font-size:.8rem;background:rgba(127,127,127,.25)}',
+                        '.jfa-pill.done{background:rgba(60,170,90,.3)}',
+                        '.jfa-msg{margin:.6rem 0;white-space:pre-wrap;overflow-wrap:anywhere}',
+                        '.jfa-item{display:flex;gap:.75rem;align-items:center;margin:.6rem 0;padding:.5rem;border-radius:6px;background:rgba(127,127,127,.12)}',
+                        '.jfa-item img{width:3rem;height:4.5rem;object-fit:cover;border-radius:4px;flex:none;background:rgba(127,127,127,.3)}',
+                        '.jfa-item a{color:inherit;text-decoration:underline;cursor:pointer}',
+                        '.jfa-photos{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}',
+                        '.jfa-photos img{height:6rem;max-width:100%;border-radius:4px;cursor:zoom-in;object-fit:cover}',
+                        '.jfa-reply{width:100%;box-sizing:border-box;min-height:4rem;margin-top:.5rem;padding:.5rem;font:inherit;color:inherit;background:rgba(127,127,127,.12);border:1px solid rgba(127,127,127,.4);border-radius:4px}',
+                        '.jfa-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}',
+                        '.jfa-btn{padding:.45rem .9rem;border-radius:4px;border:1px solid rgba(127,127,127,.5);background:transparent;color:inherit;font:inherit;cursor:pointer}',
+                        '.jfa-btn.primary{background:var(--jf-palette-primary-main,#00a4dc);border-color:transparent;color:var(--jf-palette-primary-contrastText,#fff)}',
+                        '.jfa-btn.danger{color:#e55;border-color:#e55}',
+                        '.jfa-lightbox{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out}',
+                        '.jfa-lightbox img{max-width:96vw;max-height:94vh}'
+                    ].join('\n');
+                    document.head.appendChild(s);
+                }
+
+                function h(tag, attrs, children) {
+                    var n = document.createElement(tag);
+                    Object.keys(attrs || {}).forEach(function (k) {
+                        if (k === 'text') { n.textContent = attrs[k]; }
+                        else if (k === 'class') { n.className = attrs[k]; }
+                        else { n.setAttribute(k, attrs[k]); }
+                    });
+                    (children || []).forEach(function (c) { if (c) { n.appendChild(c); } });
+                    return n;
+                }
+
+                function call(method, path, body) {
+                    var opts = { type: method, url: ApiClient.getUrl(path) };
+                    if (method === 'GET') { opts.dataType = 'json'; }
+                    if (body) { opts.data = JSON.stringify(body); opts.contentType = 'application/json'; }
+                    return ApiClient.ajax(opts);
+                }
+
+                function when(iso) {
+                    var d = new Date(iso);
+                    return isNaN(d.getTime()) ? '' : d.toLocaleString();
+                }
+
+                function lightbox(src) {
+                    var box = h('div', { class: 'jfa-lightbox' });
+                    var img = h('img', { alt: '' });
+                    img.src = src;
+                    box.appendChild(img);
+                    box.addEventListener('click', function () { box.remove(); });
+                    document.body.appendChild(box);
+                }
+
+                function update(entry, patch) {
+                    Dashboard.showLoadingMsg();
+                    return call('POST', 'Asks/Admin/' + entry.Id, patch).then(function () {
+                        if (patch.Status != null) { entry.Status = patch.Status; }
+                        if (patch.Reply != null) { entry.Reply = patch.Reply; }
+                        Dashboard.hideLoadingMsg();
+                        render();
+                    }, function () {
+                        Dashboard.hideLoadingMsg();
+                        alert('Could not save that change.');
+                    });
+                }
+
+                function card(e) {
+                    var c = h('div', { class: 'jfa-card' + (e.Status === 'new' ? ' new' : '') });
+                    c.appendChild(h('div', { class: 'jfa-top' }, [
+                        h('span', { class: 'jfa-user', text: e.UserName || 'Unknown user' }),
+                        h('span', { class: 'jfa-pill', text: TYPES[e.Type] || e.Type }),
+                        e.Kind ? h('span', { class: 'jfa-pill', text: KINDS[e.Kind] || e.Kind }) : null,
+                        h('span', { class: 'jfa-pill' + (e.Status === 'done' ? ' done' : ''), text: e.Status === 'done' ? 'Done' : 'New' }),
+                        h('span', { class: 'jfa-muted', text: when(e.CreatedUtc) })
+                    ]));
+
+                    if (e.ItemId) {
+                        var item = h('div', { class: 'jfa-item' });
+                        var img = h('img', { alt: '' });
+                        img.src = ApiClient.getUrl('Items/' + e.ItemId + '/Images/Primary', { maxHeight: 180 });
+                        img.addEventListener('error', function () { img.style.visibility = 'hidden'; });
+                        var link = h('a', { text: e.ItemName || 'Open title' });
+                        link.addEventListener('click', function () {
+                            window.location.hash = '#/details?id=' + encodeURIComponent(e.ItemId) + '&serverId=' + encodeURIComponent(ApiClient.serverId());
+                        });
+                        item.appendChild(img);
+                        item.appendChild(h('div', {}, [link, h('div', { class: 'jfa-muted', text: e.ItemType || '' })]));
+                        c.appendChild(item);
+                    }
+                    if (e.TitleText) {
+                        c.appendChild(h('div', { class: 'jfa-muted', text: 'Title typed: ' + e.TitleText }));
+                    }
+                    c.appendChild(h('p', { class: 'jfa-msg', text: e.Message }));
+
+                    if (e.ImageCount > 0) {
+                        var holder = h('div', { class: 'jfa-photos' });
+                        var showBtn = h('button', { class: 'jfa-btn', type: 'button', text: 'Show ' + e.ImageCount + ' photo' + (e.ImageCount > 1 ? 's' : '') });
+                        showBtn.addEventListener('click', function () {
+                            showBtn.disabled = true;
+                            var cached = imageCache[e.Id] ? Promise.resolve(imageCache[e.Id]) : call('GET', 'Asks/Admin/' + e.Id + '/Images').then(function (r) { imageCache[e.Id] = (r && r.Images) || []; return imageCache[e.Id]; });
+                            cached.then(function (list) {
+                                showBtn.remove();
+                                list.forEach(function (b64) {
+                                    var im = h('img', { alt: 'Attached photo' });
+                                    im.src = 'data:image/jpeg;base64,' + b64;
+                                    im.addEventListener('click', function () { lightbox(im.src); });
+                                    holder.appendChild(im);
+                                });
+                            }, function () { showBtn.disabled = false; alert('Could not load the photos.'); });
+                        });
+                        holder.appendChild(showBtn);
+                        c.appendChild(holder);
+                    }
+
+                    var reply = h('textarea', { class: 'jfa-reply', maxlength: '1000', placeholder: 'Reply (the user will see it under My messages)', 'aria-label': 'Reply' });
+                    reply.value = e.Reply || '';
+                    c.appendChild(reply);
+
+                    var actions = h('div', { class: 'jfa-actions' });
+                    var save = h('button', { class: 'jfa-btn primary', type: 'button', text: 'Save reply' });
+                    save.addEventListener('click', function () { update(e, { Reply: reply.value }); });
+                    var toggle = h('button', { class: 'jfa-btn', type: 'button', text: e.Status === 'done' ? 'Reopen' : 'Mark done' });
+                    toggle.addEventListener('click', function () { update(e, { Status: e.Status === 'done' ? 'new' : 'done' }); });
+                    var del = h('button', { class: 'jfa-btn danger', type: 'button', text: 'Delete' });
+                    del.addEventListener('click', function () {
+                        if (!confirm('Delete this message for good?')) { return; }
+                        Dashboard.showLoadingMsg();
+                        call('DELETE', 'Asks/Admin/' + e.Id).then(function () {
+                            all = all.filter(function (x) { return x.Id !== e.Id; });
+                            Dashboard.hideLoadingMsg();
+                            render();
+                        }, function () { Dashboard.hideLoadingMsg(); alert('Could not delete it.'); });
+                    });
+                    actions.appendChild(save);
+                    actions.appendChild(toggle);
+                    actions.appendChild(del);
+                    c.appendChild(actions);
+                    return c;
+                }
+
+                function pressBtn(label, active, onClick) {
+                    var b = h('button', { class: 'jfa-chipbtn', type: 'button', 'aria-pressed': String(active), text: label });
+                    b.addEventListener('click', onClick);
+                    return b;
+                }
+
+                function render() {
+                    app.textContent = '';
+                    var root = h('div', { class: 'jfa' });
+                    var newCount = all.filter(function (e) { return e.Status === 'new'; }).length;
+                    root.appendChild(h('h2', { text: 'Asks' }));
+                    root.appendChild(h('p', { class: 'jfa-muted', text: 'Messages from your users. Only you (and other admins) and the person who sent each one can read it. ' + newCount + ' new, ' + all.length + ' in total.' }));
+
+                    var bar = h('div', { class: 'jfa-bar' });
+                    [['all', 'All'], ['new', 'New'], ['done', 'Done']].forEach(function (p) {
+                        bar.appendChild(pressBtn(p[1], filter.status === p[0], function () { filter.status = p[0]; render(); }));
+                    });
+                    bar.appendChild(h('span', { class: 'spacer' }));
+                    [['all', 'Any type']].concat(Object.keys(TYPES).map(function (k) { return [k, TYPES[k]]; })).forEach(function (p) {
+                        bar.appendChild(pressBtn(p[1], filter.type === p[0], function () { filter.type = p[0]; render(); }));
+                    });
+                    var refresh = h('button', { class: 'jfa-btn', type: 'button', text: 'Refresh' });
+                    refresh.addEventListener('click', load);
+                    bar.appendChild(refresh);
+                    root.appendChild(bar);
+
+                    var shown = all.filter(function (e) {
+                        return (filter.status === 'all' || e.Status === filter.status) && (filter.type === 'all' || e.Type === filter.type);
+                    });
+                    if (!shown.length) {
+                        root.appendChild(h('p', { class: 'jfa-muted', text: all.length ? 'Nothing matches this filter.' : 'No messages yet.' }));
+                    }
+                    shown.forEach(function (e) { root.appendChild(card(e)); });
+                    app.appendChild(root);
+                }
+
+                function load() {
+                    Dashboard.showLoadingMsg();
+                    call('GET', 'Asks/Admin').then(function (list) {
+                        all = (list || []).slice().sort(function (a, b) { return String(b.CreatedUtc).localeCompare(String(a.CreatedUtc)); });
+                        Dashboard.hideLoadingMsg();
+                        render();
+                    }, function () {
+                        Dashboard.hideLoadingMsg();
+                        app.textContent = 'Could not load the messages. Are you signed in as an administrator?';
+                    });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    injectStyles();
+                    load();
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
